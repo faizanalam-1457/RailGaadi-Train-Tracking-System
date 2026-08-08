@@ -350,15 +350,7 @@ https://github.com/faizanalam-1457
 
 ---
 
-## ⭐ Acknowledgement
 
-The project is based on the public **RailGaadi** repository and its existing implementation.
-
-Original repository:
-
-https://github.com/udaysharmadev/RailGaadi
-
----
 
 ## 📄 License
 
