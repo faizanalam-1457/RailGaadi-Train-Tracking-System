@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/udaysharmadev/RailGaadi">Original Repository</a>
+  <a href="https://github.com/faizanalam-1457/RailGaadi-Train-Booking-System.git">Original Repository</a>
 </p>
 
 ---
