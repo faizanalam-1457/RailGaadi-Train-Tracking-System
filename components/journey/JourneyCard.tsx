@@ -1,13 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Gauge, MapPin, RefreshCw, ArrowRight } from 'lucide-react';
+import { Gauge, MapPin, RefreshCw, ArrowRight, Play, Pause, RotateCcw } from 'lucide-react';
 import { LiveJourney } from '@/types/train';
 import { DelayBadge } from './DelayBadge';
 import { ProgressRing } from './ProgressRing';
 import { ETAChip } from './ETAChip';
 import { formatDistance, formatTimeAgo } from '@/utils/format';
 import { cn } from '@/utils/cn';
+import { useJourneyStore } from '@/store/journey';
 
 interface JourneyCardProps {
   journey: LiveJourney;
@@ -22,6 +23,24 @@ export function JourneyCard({
   isRefreshing,
   className,
 }: JourneyCardProps) {
+  const {
+    isSimulating,
+    simulatedProgress,
+    simulatedSpeed,
+    setSimulationState,
+  } = useJourneyStore();
+
+  const activeSpeed = isSimulating ? simulatedSpeed : journey.speedKmh;
+  const activeProgress = isSimulating ? simulatedProgress : journey.completionPercentage;
+  
+  // Calculate simulated distance details
+  const activeDistanceCovered = isSimulating 
+    ? Math.round((simulatedProgress / 100) * journey.totalDistanceKm)
+    : journey.distanceCoveredKm;
+  const activeRemainingDistance = isSimulating
+    ? Math.max(0, journey.totalDistanceKm - activeDistanceCovered)
+    : journey.remainingDistanceKm;
+
   return (
     <div
       className={cn(
@@ -49,8 +68,8 @@ export function JourneyCard({
         </div>
 
         <div className="flex items-center gap-3">
-          <ETAChip eta={journey.ETA} />
-          {onRefresh && (
+          <ETAChip eta={isSimulating ? "Simulating position..." : journey.ETA} />
+          {onRefresh && !isSimulating && (
             <button
               onClick={onRefresh}
               disabled={isRefreshing}
@@ -98,7 +117,7 @@ export function JourneyCard({
             </span>
             <div className="flex items-baseline gap-1">
               <span className="font-mono text-xl font-bold text-slate-900 dark:text-white">
-                {journey.speedKmh}
+                {activeSpeed}
               </span>
               <span className="text-xs font-semibold text-slate-500">km/h</span>
             </div>
@@ -112,19 +131,81 @@ export function JourneyCard({
               Distance Covered
             </span>
             <p className="font-mono text-base font-bold text-slate-900 dark:text-white">
-              {formatDistance(journey.distanceCoveredKm)} / {formatDistance(journey.totalDistanceKm)}
+              {formatDistance(activeDistanceCovered)} / {formatDistance(journey.totalDistanceKm)}
             </p>
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              {formatDistance(journey.remainingDistanceKm)} remaining
+              {formatDistance(activeRemainingDistance)} remaining
             </span>
           </div>
-          <ProgressRing progress={journey.completionPercentage} size={54} strokeWidth={5} />
+          <ProgressRing progress={activeProgress} size={54} strokeWidth={5} />
         </div>
       </div>
 
+      {/* Simulation Controls Footer Section */}
+      <div className="mt-6 border-t border-slate-200 dark:border-slate-800/80 pt-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "h-2 w-2 rounded-full",
+              isSimulating ? "bg-amber-500 animate-ping" : "bg-slate-450"
+            )} />
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              {isSimulating ? "JOURNEY SIMULATION ACTIVE" : "REAL-TIME TELEMETRY FEED"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Play/Pause Button */}
+            <button
+              onClick={() => setSimulationState({ isSimulating: !isSimulating })}
+              className={cn(
+                "flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition-all shadow-glow",
+                isSimulating ? "bg-amber-500 hover:bg-amber-600 shadow-amber-550/20" : "bg-rail-blue hover:bg-sky-600"
+              )}
+            >
+              {isSimulating ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+              <span>{isSimulating ? "Pause Simulation" : "Start Simulation"}</span>
+            </button>
+
+            {/* Reset Button */}
+            {isSimulating && (
+              <button
+                onClick={() => setSimulationState({ simulatedProgress: 0, simulatedCurrentIndex: 0, simulatedSpeed: 0 })}
+                className="flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-350 transition-colors"
+                title="Reset simulation progress"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Progress scrubbing slider */}
+        {isSimulating && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase">
+              <span>Scrub Train Position</span>
+              <span>{simulatedProgress.toFixed(1)}% Completed</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="0.5"
+              value={simulatedProgress}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setSimulationState({ simulatedProgress: val });
+              }}
+              className="w-full h-1.5 rounded-lg appearance-none bg-slate-200 dark:bg-slate-800 accent-rail-blue cursor-pointer"
+            />
+          </div>
+        )}
+      </div>
+
       {/* Footer Meta */}
-      <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-        <span>Auto-refreshes every 30 seconds</span>
+      <div className="mt-4 flex items-center justify-between text-[10px] text-slate-400">
+        <span>{isSimulating ? "Simulation mode active" : "Auto-refreshes every 30 seconds"}</span>
         <span>Updated {formatTimeAgo(journey.lastUpdated)}</span>
       </div>
     </div>

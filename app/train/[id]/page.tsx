@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Share2, Check, MapPin, CloudSun, Mountain, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Share2, Check, MapPin, CloudSun, Mountain, AlertCircle, Armchair, Calculator, Utensils } from 'lucide-react';
 import { useLiveJourney } from '@/hooks/useLiveJourney';
+import { useSearchParams } from 'next/navigation';
 import { JourneyCard } from '@/components/journey/JourneyCard';
 import { Timeline } from '@/components/journey/Timeline';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -13,6 +14,13 @@ import { AnalyticsDashboard } from '@/features/analytics/AnalyticsDashboard';
 import { TerrainPanel } from '@/features/terrain/TerrainPanel';
 import { MobileJourneySummary } from '@/components/layout/MobileJourneySummary';
 import { FavoriteButton } from '@/features/favorites/FavoriteButton';
+import { CoachLayout } from '@/features/journey/CoachLayout';
+import { FareCalculator } from '@/features/journey/FareCalculator';
+import { PantryMenu } from '@/features/journey/PantryMenu';
+import { ProximityAlarmModal } from '@/features/journey/ProximityAlarmModal';
+import { AIJourneyPredictor } from '@/features/analytics/AIJourneyPredictor';
+import { useJourneyStore } from '@/store/journey';
+import { Station } from '@/types/train';
 import { cn } from '@/utils/cn';
 import dynamic from 'next/dynamic';
 
@@ -27,6 +35,9 @@ const MapView = dynamic(() => import('@/features/maps/MapView'), {
 
 const TABS = [
   { id: 'map', label: 'Live Map', icon: MapPin },
+  { id: 'coach', label: 'Coach & Seats', icon: Armchair },
+  { id: 'fare', label: 'Fare Estimator', icon: Calculator },
+  { id: 'pantry', label: 'Seat Meals', icon: Utensils },
   { id: 'weather', label: 'Weather', icon: CloudSun },
   { id: 'analytics', label: 'Terrain & Analytics', icon: Mountain },
 ] as const;
@@ -56,18 +67,147 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   },
 };
 
-export default function TrainJourneyPage({ params }: { params: { id: string } }) {
+function TrainJourneyPageContent({ params }: { params: { id: string } }) {
   const trainId = params.id;
   const { data: journey, isLoading, isError, error, refetch, isRefetching } = useLiveJourney(trainId);
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>('map');
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams?.get('tab') as TabId) || 'map';
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+  const [alarmStation, setAlarmStation] = useState<Station | null>(null);
+
+  // Zustand stores for simulation parameters
+  const {
+    isSimulating,
+    simulatedProgress,
+    simulatedSpeed,
+    simulatedCurrentIndex,
+    activeAlarms,
+    setSimulationState,
+  } = useJourneyStore();
+
+  // Reset simulation state when train changes or page loads
+  useEffect(() => {
+    setSimulationState({
+      isSimulating: false,
+      simulatedProgress: 0,
+      simulatedSpeed: 0,
+      simulatedCurrentIndex: 0,
+    });
+  }, [trainId, setSimulationState]);
+
+  // Simulation run interval effect
+  useEffect(() => {
+    if (!isSimulating || !journey) return;
+
+    let prevStationCode = '';
+
+    const interval = setInterval(() => {
+      // Access current state values securely inside the interval
+      const state = useJourneyStore.getState();
+      const currentProgress = state.simulatedProgress;
+      const totalDistance = journey.totalDistanceKm;
+
+      // Increment progress
+      let nextProgress = currentProgress + 1;
+      if (nextProgress >= 100) {
+        nextProgress = 0;
+      }
+
+      const currentDistance = (nextProgress / 100) * totalDistance;
+
+      // Find current station index
+      let currentIdx = 0;
+      for (let i = 0; i < journey.stations.length; i++) {
+        if (journey.stations[i].distanceKm <= currentDistance) {
+          currentIdx = i;
+        }
+      }
+
+      const activeStation = journey.stations[currentIdx];
+
+      // Check for proximity alarm trigger
+      if (activeStation && activeStation.code !== prevStationCode) {
+        prevStationCode = activeStation.code;
+        if (state.activeAlarms.includes(activeStation.code)) {
+          // Trigger alarm! Pause simulation and show modal
+          setSimulationState({ isSimulating: false });
+          setAlarmStation(activeStation);
+          clearInterval(interval);
+          return;
+        }
+      }
+
+      // Simulate speed: fluctuate between 90 and 120 km/h, but decelerate to 0 near stations
+      let targetSpeed = 110;
+      const nextStation = journey.stations[currentIdx + 1];
+      if (nextStation) {
+        const distToNext = nextStation.distanceKm - currentDistance;
+        if (distToNext < 15) {
+          // Slow down!
+          targetSpeed = Math.max(10, Math.round((distToNext / 15) * 110));
+        }
+      }
+      
+      // If we are extremely close to the station (e.g. within 1km), halt speed is 0
+      const distFromCurrent = currentDistance - activeStation.distanceKm;
+      if (distFromCurrent < 2.5 && activeStation.distanceKm > 0 && activeStation.distanceKm < totalDistance) {
+        targetSpeed = 0;
+      }
+
+      setSimulationState({
+        simulatedProgress: nextProgress,
+        simulatedCurrentIndex: currentIdx,
+        simulatedSpeed: targetSpeed,
+      });
+
+    }, 800);
+
+    return () => clearInterval(interval);
+  }, [isSimulating, journey, setSimulationState]);
+
+  // Create simulated journey if isSimulating is active
+  const activeJourney = useMemo(() => {
+    if (!journey || !isSimulating) return journey;
+
+    const cloned = { ...journey };
+    cloned.completionPercentage = simulatedProgress;
+    cloned.speedKmh = simulatedSpeed;
+    
+    const covered = Math.round((simulatedProgress / 100) * journey.totalDistanceKm);
+    cloned.distanceCoveredKm = covered;
+    cloned.remainingDistanceKm = Math.max(0, journey.totalDistanceKm - covered);
+
+    // Re-calculate stations statuses
+    cloned.stations = journey.stations.map((st, idx) => {
+      const clonedSt = { ...st };
+      if (idx < simulatedCurrentIndex) {
+        clonedSt.status = 'passed';
+      } else if (idx === simulatedCurrentIndex) {
+        clonedSt.status = 'current';
+      } else {
+        clonedSt.status = 'upcoming';
+      }
+      return clonedSt;
+    });
+
+    cloned.currentStation = cloned.stations[simulatedCurrentIndex];
+    cloned.previousStation = cloned.stations[simulatedCurrentIndex - 1];
+    cloned.nextStation = cloned.stations[simulatedCurrentIndex + 1];
+
+    if (cloned.nextStation) {
+      cloned.ETA = `${cloned.nextStation.name} at ${cloned.nextStation.scheduledArrival}`;
+    }
+
+    return cloned;
+  }, [journey, isSimulating, simulatedProgress, simulatedSpeed, simulatedCurrentIndex]);
 
   const handleShare = () => {
     if (typeof window === 'undefined') return;
     const shareUrl = window.location.href;
     if (typeof navigator.share === 'function') {
       navigator
-        .share({ title: `RailGaadi – ${journey?.name || `Train #${trainId}`}`, url: shareUrl })
+        .share({ title: `RailGaadi – ${activeJourney?.name || `Train #${trainId}`}`, url: shareUrl })
         .catch(() => {
           navigator.clipboard.writeText(shareUrl);
           setCopied(true);
@@ -94,7 +234,7 @@ export default function TrainJourneyPage({ params }: { params: { id: string } })
     );
   }
 
-  if (isError || !journey) {
+  if (isError || !journey || !activeJourney) {
     const errMsg = (error as Error)?.message || '';
     const isQuotaError = errMsg.includes('QUOTA_EXCEEDED') || errMsg.includes('TOO_MANY_REQUESTS') || errMsg.includes('Daily quota');
     const is404 = errMsg.includes('404') || errMsg.includes('not found');
@@ -127,7 +267,7 @@ export default function TrainJourneyPage({ params }: { params: { id: string } })
               </a>
               <Link
                 href="/"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 Back to Search
               </Link>
@@ -148,15 +288,15 @@ export default function TrainJourneyPage({ params }: { params: { id: string } })
     );
   }
 
-  const statusCfg = STATUS_CONFIG[journey.status] || STATUS_CONFIG.running;
+  const statusCfg = STATUS_CONFIG[activeJourney.status] || STATUS_CONFIG.running;
 
   // Build a lean SearchResult-compatible object for FavoriteButton
   const trainForFavorite = {
-    id: journey.trainId,
-    number: journey.number,
-    name: journey.name,
-    origin: journey.origin,
-    destination: journey.destination,
+    id: activeJourney.trainId,
+    number: activeJourney.number,
+    name: activeJourney.name,
+    origin: activeJourney.origin,
+    destination: activeJourney.destination,
   };
 
   return (
@@ -193,21 +333,21 @@ export default function TrainJourneyPage({ params }: { params: { id: string } })
       </div>
 
       {/* ─── Mobile Journey Summary ─── */}
-      <MobileJourneySummary journey={journey} />
+      <MobileJourneySummary journey={activeJourney} />
 
       {/* ─── Hero Journey Card (desktop) ─── */}
       <div className="hidden md:block">
-        <JourneyCard journey={journey} onRefresh={() => refetch()} isRefreshing={isRefetching} />
+        <JourneyCard journey={activeJourney} onRefresh={() => refetch()} isRefreshing={isRefetching} />
       </div>
 
       {/* ─── Not-Started / Cancelled Banner ─── */}
-      {(journey.status === 'not_started' || journey.status === 'cancelled') && (
+      {(activeJourney.status === 'not_started' || activeJourney.status === 'cancelled') && (
         <div className="glass-panel flex items-center gap-3 rounded-2xl p-4 border border-amber-500/20">
           <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0" />
           <p className="text-sm text-slate-700 dark:text-slate-200">
-            {journey.status === 'not_started'
-              ? `Train #${journey.number} hasn't departed yet. Live tracking activates once the journey begins (scheduled departure: ${journey.stations[0]?.scheduledDeparture || 'check timetable'}).`
-              : `Train #${journey.number} has been cancelled. Please check NTES for alternate arrangements.`}
+            {activeJourney.status === 'not_started'
+              ? `Train #${activeJourney.number} hasn't departed yet. Live tracking activates once the journey begins (scheduled departure: ${activeJourney.stations[0]?.scheduledDeparture || 'check timetable'}).`
+              : `Train #${activeJourney.number} has been cancelled. Please check NTES for alternate arrangements.`}
           </p>
         </div>
       )}
@@ -235,12 +375,16 @@ export default function TrainJourneyPage({ params }: { params: { id: string } })
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Active feature panel */}
         <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-          {activeTab === 'map' && <MapView journey={journey} className="h-[480px] w-full" />}
-          {activeTab === 'weather' && <WeatherPanel journey={journey} />}
+          {activeTab === 'map' && <MapView journey={activeJourney} className="h-[480px] w-full" />}
+          {activeTab === 'coach' && <CoachLayout />}
+          {activeTab === 'fare' && <FareCalculator stations={activeJourney.stations} />}
+          {activeTab === 'pantry' && <PantryMenu />}
+          {activeTab === 'weather' && <WeatherPanel journey={activeJourney} />}
           {activeTab === 'analytics' && (
             <>
-              <AnalyticsDashboard journey={journey} />
-              <TerrainPanel trainId={journey.trainId} />
+              <AIJourneyPredictor journey={activeJourney} />
+              <AnalyticsDashboard journey={activeJourney} />
+              <TerrainPanel trainId={activeJourney.trainId} />
             </>
           )}
         </div>
@@ -248,11 +392,37 @@ export default function TrainJourneyPage({ params }: { params: { id: string } })
         {/* Route Timeline */}
         <div className="lg:col-span-5 xl:col-span-4">
           <Timeline
-            stations={journey.stations}
-            currentStationCode={journey.currentStation?.code}
+            stations={activeJourney.stations}
+            currentStationCode={activeJourney.currentStation?.code}
           />
         </div>
       </div>
+
+      {/* Proximity Alarm Warning Overlay */}
+      <ProximityAlarmModal
+        isOpen={alarmStation !== null}
+        stationName={alarmStation?.name || ''}
+        stationCode={alarmStation?.code || ''}
+        onClose={() => setAlarmStation(null)}
+      />
     </div>
+  );
+}
+
+export default function TrainJourneyPage({ params }: { params: { id: string } }) {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6 py-4 animate-pulse">
+        <div className="h-10 w-48 rounded-xl bg-slate-200/60 dark:bg-slate-800/60" />
+        <div className="h-40 w-full rounded-3xl bg-slate-200/60 dark:bg-slate-800/60" />
+        <div className="h-12 w-80 rounded-2xl bg-slate-200/60 dark:bg-slate-800/60" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-pulse">
+          <div className="lg:col-span-7 h-[480px] rounded-3xl bg-slate-200/60 dark:bg-slate-800/60" />
+          <div className="lg:col-span-5 h-[480px] rounded-3xl bg-slate-200/60 dark:bg-slate-800/60" />
+        </div>
+      </div>
+    }>
+      <TrainJourneyPageContent params={params} />
+    </Suspense>
   );
 }

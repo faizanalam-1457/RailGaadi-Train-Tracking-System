@@ -1,10 +1,11 @@
 'use client';
 
 import React from 'react';
-import { CheckCircle2, Circle, Radio, Clock } from 'lucide-react';
+import { CheckCircle2, Circle, Radio, Clock, Bell } from 'lucide-react';
 import { Station } from '@/types/train';
 import { formatDelay } from '@/utils/format';
 import { cn } from '@/utils/cn';
+import { useJourneyStore } from '@/store/journey';
 
 interface TimelineProps {
   stations: Station[];
@@ -13,6 +14,8 @@ interface TimelineProps {
 }
 
 export function Timeline({ stations, currentStationCode, className }: TimelineProps) {
+  const { activeAlarms, toggleAlarm } = useJourneyStore();
+
   return (
     <div className={cn('glass-panel rounded-3xl p-6 shadow-glass', className)}>
       <h3 className="mb-6 text-lg font-bold text-slate-900 dark:text-white">
@@ -26,6 +29,7 @@ export function Timeline({ stations, currentStationCode, className }: TimelinePr
             const isCurrent = st.status === 'current' || st.code === currentStationCode;
             const isUpcoming = st.status === 'upcoming';
             const delayInfo = formatDelay(st.delayMinutes);
+            const hasAlarm = activeAlarms.includes(st.code);
 
             return (
               <div key={st.code + idx} className="relative flex items-start justify-between gap-4">
@@ -71,6 +75,21 @@ export function Timeline({ stations, currentStationCode, className }: TimelinePr
                       <span className="rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
                         PF {st.platform}
                       </span>
+                    )}
+
+                    {!isPassed && (
+                      <button
+                        onClick={() => toggleAlarm(st.code)}
+                        className={cn(
+                          "rounded-md p-1 transition-all",
+                          hasAlarm
+                            ? "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 animate-pulse border border-amber-500/30"
+                            : "text-slate-400 hover:text-slate-600 hover:bg-slate-150 dark:hover:bg-slate-800"
+                        )}
+                        title={hasAlarm ? "Remove proximity alarm" : "Set wake-up alarm"}
+                      >
+                        <Bell className={cn("h-3.5 w-3.5", hasAlarm && "fill-amber-550")} />
+                      </button>
                     )}
                   </div>
 
