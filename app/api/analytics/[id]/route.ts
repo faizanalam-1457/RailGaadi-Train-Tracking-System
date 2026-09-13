@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLiveJourney } from '@/lib/railradar';
 import { getElevationProfile, ElevationPoint } from '@/lib/opentopography';
-import { getCached, setCached } from '@/lib/cache';
+import { redisGet, redisSet } from '@/lib/redis';
+import { checkRateLimit } from '@/lib/ratelimit';
 import { ApiResponse } from '@/types/api';
 
 export interface AnalyticsResponse {
@@ -19,16 +20,29 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+  const rateLimit = await checkRateLimit(`analytics:${ip}`, 30, 60);
+
+  if (!rateLimit.success) {
+    return NextResponse.json<ApiResponse<never>>(
+      {
+        success: false,
+        error: { code: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded.' },
+        meta: { timestamp: new Date().toISOString(), cached: false },
+      },
+      { status: 429 }
+    );
+  }
+
   const trainId = params.id;
   const cacheKey = `analytics:${trainId}`;
 
-  const cached = getCached<AnalyticsResponse>(cacheKey);
+  const cached = await redisGet<AnalyticsResponse>(cacheKey);
   if (cached) {
     return NextResponse.json<ApiResponse<AnalyticsResponse>>({
       success: true,
       data: cached,
-      cached: true,
-      timestamp: new Date().toISOString(),
+      meta: { timestamp: new Date().toISOString(), cached: true },
     });
   }
 
@@ -36,7 +50,11 @@ export async function GET(
     const journey = await getLiveJourney(trainId);
     if (!journey) {
       return NextResponse.json<ApiResponse<never>>(
-        { success: false, error: 'Journey not found', timestamp: new Date().toISOString() },
+        {
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Journey not found' },
+          meta: { timestamp: new Date().toISOString(), cached: false },
+        },
         { status: 404 }
       );
     }
@@ -63,17 +81,20 @@ export async function GET(
       delayHistory,
     };
 
-    setCached(cacheKey, result, 300); // 5 min cache
+    await redisSet(cacheKey, result, 300); // 5 min cache
 
     return NextResponse.json<ApiResponse<AnalyticsResponse>>({
       success: true,
       data: result,
-      cached: false,
-      timestamp: new Date().toISOString(),
+      meta: { timestamp: new Date().toISOString(), cached: false },
     });
   } catch (err: any) {
     return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: err.message || 'Failed to compute analytics', timestamp: new Date().toISOString() },
+      {
+        success: false,
+        error: { code: 'ANALYTICS_FAILED', message: err.message || 'Failed to compute analytics' },
+        meta: { timestamp: new Date().toISOString(), cached: false },
+      },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 import { SearchResult, LiveJourney, Station } from '@/types/train';
 import { env } from '@/config/env';
-import { searchLocalTrains, TRAINS_DB, TrainEntry } from '@/lib/trains-db';
+import { searchLocalTrains, TRAINS_DB } from '@/lib/trains-db';
 
 const RR_BASE = 'https://api.railradar.in/v1';
 
@@ -20,11 +20,11 @@ function extractErrorMessage(json: any): string {
 }
 
 /**
- * Fetch wrapper with a 4-second timeout to prevent Node undici connect timeouts.
+ * Fetch wrapper with a 5-second timeout.
  */
 async function rrFetch(url: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
   try {
     const res = await fetch(url, {
@@ -198,7 +198,6 @@ function normaliseLiveResponse(raw: RRLiveResponse, routeGeo?: [number, number][
 
   const stations = relevantStops.map((s) => {
     const st = normaliseRouteStop(s, stationMap);
-    // If station coordinates are missing, interpolate along routeGeo
     if ((!st.lat || !st.lng) && routeGeo && routeGeo.length >= 2 && totalDistanceKm > 0) {
       const pct = Math.min(100, Math.max(0, (st.distanceKm / totalDistanceKm) * 100));
       const [lng, lat] = interpolatePolyline(routeGeo, pct);
@@ -216,7 +215,6 @@ function normaliseLiveResponse(raw: RRLiveResponse, routeGeo?: [number, number][
   const remainingKm = Math.max(0, totalDistanceKm - coveredKm);
   const completion = totalDistanceKm > 0 ? Math.min(100, (coveredKm / totalDistanceKm) * 100) : 0;
 
-  // Determine train position
   let trainLat = raw.currentLocation?.lat;
   let trainLng = raw.currentLocation?.lng;
 
@@ -230,8 +228,8 @@ function normaliseLiveResponse(raw: RRLiveResponse, routeGeo?: [number, number][
       trainLng = lng;
       trainLat = lat;
     } else {
-      trainLat = train.source.lat;
-      trainLng = train.source.lng;
+      trainLat = train.source?.lat || 28.643;
+      trainLng = train.source?.lng || 77.2194;
     }
   }
 
@@ -252,8 +250,10 @@ function normaliseLiveResponse(raw: RRLiveResponse, routeGeo?: [number, number][
     trainId: raw.trainNumber,
     number: raw.trainNumber,
     name: raw.trainName,
-    origin: { code: train.source.code, name: train.source.name },
-    destination: { code: train.destination.code, name: train.destination.name },
+    serviceType: train.category || train.type || 'Express',
+    runsOn: train.runDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    origin: { code: train.source?.code || '', name: train.source?.name || '' },
+    destination: { code: train.destination?.code || '', name: train.destination?.name || '' },
     currentLocation,
     status: normaliseStatus(raw.status),
     delayMinutes: raw.delayMinutes || 0,
@@ -269,6 +269,7 @@ function normaliseLiveResponse(raw: RRLiveResponse, routeGeo?: [number, number][
     nextStation,
     stations,
     routeGeometry: routeGeo,
+    isDemoData: false,
   };
 }
 
@@ -291,9 +292,11 @@ async function fetchRouteGeometry(trainNumber: string): Promise<[number, number]
   }
 }
 
-// ─── Fallback Journey Generator ──────────────────────────────────────────
-
-function generateFallbackJourney(trainNumber: string): LiveJourney | null {
+/**
+ * Fallback Journey Generator for Explicit Development / Simulation Mode.
+ * Strictly sets `isDemoData: true`.
+ */
+export function generateFallbackJourney(trainNumber: string): LiveJourney {
   const train = TRAINS_DB.find((t) => t.number === trainNumber) || {
     number: trainNumber,
     name: `Express Train #${trainNumber}`,
@@ -364,6 +367,8 @@ function generateFallbackJourney(trainNumber: string): LiveJourney | null {
     trainId: train.number,
     number: train.number,
     name: train.name,
+    serviceType: 'Superfast Express (Demo)',
+    runsOn: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
     origin: { code: train.fromCode, name: train.from },
     destination: { code: train.toCode, name: train.to },
     currentLocation: {
@@ -392,8 +397,12 @@ function generateFallbackJourney(trainNumber: string): LiveJourney | null {
       [75.8648, 25.2138],
       [77.2194, 28.643],
     ],
+    isDemoData: true,
   };
 }
+
+// In-flight request deduplication map to prevent request storms
+const pendingJourneyRequests = new Map<string, Promise<LiveJourney | null>>();
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -430,7 +439,7 @@ export async function searchTrains(query: string): Promise<SearchResult[]> {
         destination: { code: '', name: '' },
       }));
   } catch (err) {
-    console.warn('RailRadar lookup API fetch failed, using local DB fallback');
+    console.warn('[searchTrains] External lookup API fetch failed, using local DB fallback');
     return searchLocalTrains(q).map((t) => ({
       id: t.number,
       number: t.number,
@@ -442,38 +451,52 @@ export async function searchTrains(query: string): Promise<SearchResult[]> {
 }
 
 export async function getLiveJourney(trainNumber: string): Promise<LiveJourney | null> {
-  try {
-    const [liveRes, routeGeo] = await Promise.all([
-      rrFetch(`${RR_BASE}/trains/${trainNumber}/live`, { cache: 'no-store' } as any),
-      fetchRouteGeometry(trainNumber),
-    ]);
-
-    const json = await liveRes.json().catch(() => null);
-
-    if (!liveRes.ok) {
-      if (liveRes.status === 404) return null;
-      const msg = extractErrorMessage(json);
-      if (liveRes.status === 429 || json?.error?.code === 'TOO_MANY_REQUESTS') {
-        throw new Error(`QUOTA_EXCEEDED: ${msg}`);
-      }
-      throw new Error(`RailRadar API error (${liveRes.status}): ${msg}`);
-    }
-
-    if (!json?.success || !json?.data) {
-      const msg = extractErrorMessage(json);
-      if (json?.error?.code === 'TOO_MANY_REQUESTS') {
-        throw new Error(`QUOTA_EXCEEDED: ${msg}`);
-      }
-      return null;
-    }
-
-    return normaliseLiveResponse(json.data as RRLiveResponse, routeGeo);
-  } catch (err: any) {
-    if (err?.message?.includes('QUOTA_EXCEEDED')) {
-      throw err;
-    }
-    console.warn(`[getLiveJourney] RailRadar API network error for train ${trainNumber}:`, err.message);
-    // Return generated fallback journey if server can't reach RailRadar API
-    return generateFallbackJourney(trainNumber);
+  if (pendingJourneyRequests.has(trainNumber)) {
+    return pendingJourneyRequests.get(trainNumber)!;
   }
+
+  const promise = (async () => {
+    try {
+      const [liveRes, routeGeo] = await Promise.all([
+        rrFetch(`${RR_BASE}/trains/${trainNumber}/live`, { cache: 'no-store' } as any),
+        fetchRouteGeometry(trainNumber),
+      ]);
+
+      const json = await liveRes.json().catch(() => null);
+
+      if (!liveRes.ok) {
+        if (liveRes.status === 404) return null;
+        const msg = extractErrorMessage(json);
+        if (liveRes.status === 429 || json?.error?.code === 'TOO_MANY_REQUESTS') {
+          throw new Error(`QUOTA_EXCEEDED: ${msg}`);
+        }
+        throw new Error(`PROVIDER_UNAVAILABLE (${liveRes.status}): ${msg}`);
+      }
+
+      if (!json?.success || !json?.data) {
+        const msg = extractErrorMessage(json);
+        if (json?.error?.code === 'TOO_MANY_REQUESTS') {
+          throw new Error(`QUOTA_EXCEEDED: ${msg}`);
+        }
+        return null;
+      }
+
+      return normaliseLiveResponse(json.data as RRLiveResponse, routeGeo);
+    } catch (err: any) {
+      if (err?.message?.includes('QUOTA_EXCEEDED')) {
+        throw err;
+      }
+      // If dev mode explicitly permits demo fallback via env flag
+      if (process.env.ALLOW_DEMO_DATA === 'true') {
+        console.warn(`[getLiveJourney] RailRadar API network error for train ${trainNumber}. Returning DEMO fallback.`);
+        return generateFallbackJourney(trainNumber);
+      }
+      throw err;
+    } finally {
+      pendingJourneyRequests.delete(trainNumber);
+    }
+  })();
+
+  pendingJourneyRequests.set(trainNumber, promise);
+  return promise;
 }

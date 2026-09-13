@@ -44,6 +44,8 @@ export interface LiveJourney {
   trainId: string;
   number: string;
   name: string;
+  serviceType?: string;
+  runsOn?: string[];
   origin: {
     code: string;
     name: string;
@@ -67,4 +69,5 @@ export interface LiveJourney {
   ETA: string;
   stations: Station[];
   routeGeometry?: [number, number][]; // Array of [lng, lat] for MapLibre polyline
+  isDemoData?: boolean;
 }

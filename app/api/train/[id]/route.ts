@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLiveJourney } from '@/lib/railradar';
-import { getCached, setCached } from '@/lib/cache';
+import { redisGet, redisSet } from '@/lib/redis';
+import { checkRateLimit } from '@/lib/ratelimit';
 import { ApiResponse } from '@/types/api';
 import { LiveJourney } from '@/types/train';
 
@@ -8,26 +9,61 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+  const rateLimit = await checkRateLimit(`train:${ip}`, 60, 60);
+
+  if (!rateLimit.success) {
+    return NextResponse.json<ApiResponse<never>>(
+      {
+        success: false,
+        error: {
+          code: 'TOO_MANY_REQUESTS',
+          message: 'Rate limit exceeded. Please wait before making more requests.',
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          cached: false,
+        },
+      },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimit.resetSeconds),
+        },
+      }
+    );
+  }
+
   const trainId = params.id;
   if (!trainId) {
     return NextResponse.json<ApiResponse<never>>(
       {
         success: false,
-        error: 'Train ID is required',
-        timestamp: new Date().toISOString(),
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'Train ID parameter is required.',
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          cached: false,
+        },
       },
       { status: 400 }
     );
   }
 
   const cacheKey = `live:${trainId}`;
-  const cached = getCached<LiveJourney>(cacheKey);
+  const cached = await redisGet<LiveJourney>(cacheKey);
   if (cached) {
     return NextResponse.json<ApiResponse<LiveJourney>>({
       success: true,
       data: cached,
-      cached: true,
-      timestamp: new Date().toISOString(),
+      meta: {
+        timestamp: new Date().toISOString(),
+        cached: true,
+        provider: 'RailRadar Cache',
+        isDemoData: cached.isDemoData ?? false,
+      },
     });
   }
 
@@ -37,29 +73,50 @@ export async function GET(
       return NextResponse.json<ApiResponse<never>>(
         {
           success: false,
-          error: 'Live journey not found for train',
-          timestamp: new Date().toISOString(),
+          error: {
+            code: 'NOT_FOUND',
+            message: `Live journey not found for train #${trainId}. Please verify train number.`,
+          },
+          meta: {
+            timestamp: new Date().toISOString(),
+            cached: false,
+          },
         },
         { status: 404 }
       );
     }
 
-    setCached(cacheKey, journey, 30); // 30 sec cache for live tracking
+    await redisSet(cacheKey, journey, 30); // 30s cache
 
     return NextResponse.json<ApiResponse<LiveJourney>>({
       success: true,
       data: journey,
-      cached: false,
-      timestamp: new Date().toISOString(),
+      meta: {
+        timestamp: new Date().toISOString(),
+        cached: false,
+        provider: 'RailRadar Intelligence API',
+        isDemoData: journey.isDemoData ?? false,
+      },
     });
   } catch (err: any) {
+    const msg = err.message || 'Failed to fetch live journey';
+    const isQuota = msg.includes('QUOTA_EXCEEDED');
+
     return NextResponse.json<ApiResponse<never>>(
       {
         success: false,
-        error: err.message || 'Failed to fetch live journey',
-        timestamp: new Date().toISOString(),
+        error: {
+          code: isQuota ? 'QUOTA_EXCEEDED' : 'SERVICE_UNAVAILABLE',
+          message: isQuota
+            ? 'External railway API daily quota reached. Live tracking is temporarily restricted.'
+            : 'Railway data provider is currently unreachable. Please try again in a few moments.',
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          cached: false,
+        },
       },
-      { status: 500 }
+      { status: isQuota ? 429 : 503 }
     );
   }
 }

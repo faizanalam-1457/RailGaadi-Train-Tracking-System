@@ -1,11 +1,10 @@
-'use client';
-
 import React from 'react';
-import { CheckCircle2, Circle, Radio, Clock, Bell } from 'lucide-react';
+import { CheckCircle2, Circle, Radio, Clock, Bell, Utensils } from 'lucide-react';
 import { Station } from '@/types/train';
 import { formatDelay } from '@/utils/format';
 import { cn } from '@/utils/cn';
 import { useJourneyStore } from '@/store/journey';
+import { getStationCateringConfig, OFFICIAL_IRCTC_URL } from '@/lib/catering/stations';
 
 interface TimelineProps {
   stations: Station[];
@@ -30,6 +29,7 @@ export function Timeline({ stations, currentStationCode, className }: TimelinePr
             const isUpcoming = st.status === 'upcoming';
             const delayInfo = formatDelay(st.delayMinutes);
             const hasAlarm = activeAlarms.includes(st.code);
+            const cateringConfig = getStationCateringConfig(st.code);
 
             return (
               <div key={st.code + idx} className="relative flex items-start justify-between gap-4">
@@ -51,7 +51,7 @@ export function Timeline({ stations, currentStationCode, className }: TimelinePr
 
                 {/* Station Info */}
                 <div className="flex-1 pl-2">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <h4
                       className={cn(
                         'font-bold',
@@ -69,6 +69,19 @@ export function Timeline({ stations, currentStationCode, className }: TimelinePr
                       <span className="rounded-md bg-rail-blue/10 px-2 py-0.5 font-mono text-[10px] font-bold text-rail-blue">
                         LIVE LOCATION
                       </span>
+                    )}
+
+                    {cateringConfig && cateringConfig.available && (
+                      <a
+                        href={OFFICIAL_IRCTC_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                        title="IRCTC eCatering available at this station"
+                      >
+                        <Utensils className="h-3 w-3" />
+                        <span>eCatering</span>
+                      </a>
                     )}
 
                     {st.platform && (
@@ -122,3 +135,4 @@ export function Timeline({ stations, currentStationCode, className }: TimelinePr
     </div>
   );
 }
+

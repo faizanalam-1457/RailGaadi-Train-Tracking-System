@@ -3,14 +3,16 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, Heart, Train } from 'lucide-react';
+import { Home, Compass, Newspaper, Heart, Info } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useFavoritesStore } from '@/store/favorites';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
-  { href: '/?search=1', label: 'Search', icon: Search },
-  { href: '/favorites', label: 'Favorites', icon: Heart },
+  { href: '/live-radar', label: 'Radar', icon: Compass },
+  { href: '/intelligence', label: 'News', icon: Newspaper },
+  { href: '/about', label: 'About', icon: Info },
+  { href: '/favorites', label: 'Saved', icon: Heart },
 ];
 
 export function BottomNav() {
@@ -18,20 +20,20 @@ export function BottomNav() {
   const { favorites } = useFavoritesStore();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
-      <div className="glass-panel mx-3 mb-3 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 shadow-glass overflow-hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden">
+      <div className="glass-panel mx-3 mb-3 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 shadow-glass overflow-hidden bg-background/90 backdrop-blur-md">
         <div className="flex items-center justify-around px-2 py-2">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const isActive =
-              href === '/' ? pathname === '/' : pathname.startsWith(href.split('?')[0]);
+              href === '/' ? pathname === '/' : pathname.startsWith(href);
             const isFavoritesTab = href === '/favorites';
 
             return (
               <Link
                 key={href}
-                href={href.split('?')[0]}
+                href={href}
                 className={cn(
-                  'relative flex flex-col items-center gap-0.5 rounded-xl px-4 py-2 transition-all duration-200',
+                  'relative flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 transition-all duration-200',
                   isActive
                     ? 'text-rail-blue'
                     : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
@@ -47,7 +49,7 @@ export function BottomNav() {
                 </div>
                 <span className="text-[10px] font-semibold">{label}</span>
                 {isActive && (
-                  <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-rail-blue" />
+                  <span className="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-rail-blue" />
                 )}
               </Link>
             );
@@ -57,3 +59,4 @@ export function BottomNav() {
     </nav>
   );
 }
+

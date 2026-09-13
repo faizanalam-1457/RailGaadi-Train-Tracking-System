@@ -9,7 +9,8 @@ async function fetchLiveJourney(trainId: string): Promise<LiveJourney> {
   const res = await fetch(`/api/train/${trainId}`);
   const json: ApiResponse<LiveJourney> = await res.json();
   if (!json.success || !json.data) {
-    throw new Error(json.error || 'Failed to fetch live journey');
+    const errorMsg = json.error?.message || 'Failed to fetch live journey';
+    throw new Error(errorMsg);
   }
   return json.data;
 }

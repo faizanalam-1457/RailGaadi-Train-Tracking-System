@@ -34,11 +34,24 @@ export function formatDistance(km: number): string {
 }
 
 export function formatTimeAgo(isoTimestamp: string): string {
-  const diffMs = Date.now() - new Date(isoTimestamp).getTime();
+  const date = new Date(isoTimestamp);
+  if (isNaN(date.getTime())) return 'Recently';
+
+  const diffMs = Date.now() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
   if (diffSec < 10) return 'Just now';
   if (diffSec < 60) return `${diffSec}s ago`;
+
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  return `${Math.floor(diffMin / 60)}h ago`;
+  if (diffMin < 60) return `${diffMin} min ago`;
+
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} ${diffHour === 1 ? 'hour' : 'hours'} ago`;
+
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay === 1) return 'Yesterday';
+  if (diffDay < 7) return `${diffDay} days ago`;
+
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
+

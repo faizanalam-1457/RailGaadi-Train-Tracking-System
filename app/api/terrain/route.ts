@@ -1,28 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTerrainFeatures, TerrainFeature } from '@/lib/overpass';
 import { getLiveJourney } from '@/lib/railradar';
-import { getCached, setCached } from '@/lib/cache';
+import { redisGet, redisSet } from '@/lib/redis';
+import { checkRateLimit } from '@/lib/ratelimit';
 import { ApiResponse } from '@/types/api';
 
 export async function GET(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+  const rateLimit = await checkRateLimit(`terrain:${ip}`, 30, 60);
+
+  if (!rateLimit.success) {
+    return NextResponse.json<ApiResponse<never>>(
+      {
+        success: false,
+        error: { code: 'TOO_MANY_REQUESTS', message: 'Rate limit exceeded.' },
+        meta: { timestamp: new Date().toISOString(), cached: false },
+      },
+      { status: 429 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const trainId = searchParams.get('trainId');
 
   if (!trainId) {
     return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: 'trainId is required', timestamp: new Date().toISOString() },
+      {
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'trainId is required' },
+        meta: { timestamp: new Date().toISOString(), cached: false },
+      },
       { status: 400 }
     );
   }
 
   const cacheKey = `terrain:${trainId}`;
-  const cached = getCached<TerrainFeature[]>(cacheKey);
+  const cached = await redisGet<TerrainFeature[]>(cacheKey);
   if (cached) {
     return NextResponse.json<ApiResponse<TerrainFeature[]>>({
       success: true,
       data: cached,
-      cached: true,
-      timestamp: new Date().toISOString(),
+      meta: { timestamp: new Date().toISOString(), cached: true },
     });
   }
 
@@ -32,8 +50,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json<ApiResponse<TerrainFeature[]>>({
         success: true,
         data: [],
-        cached: false,
-        timestamp: new Date().toISOString(),
+        meta: { timestamp: new Date().toISOString(), cached: false },
       });
     }
 
@@ -43,7 +60,6 @@ export async function GET(request: NextRequest) {
 
     const features = await getTerrainFeatures(routeCoords);
 
-    // Compute rough distance from first station for each feature
     const origin = journey.stations[0];
     if (origin?.lat && origin?.lng) {
       features.forEach((f) => {
@@ -53,20 +69,22 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Sort by distance
     features.sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));
 
-    setCached(cacheKey, features, 86400); // 24h
+    await redisSet(cacheKey, features, 86400); // 24h
 
     return NextResponse.json<ApiResponse<TerrainFeature[]>>({
       success: true,
       data: features,
-      cached: false,
-      timestamp: new Date().toISOString(),
+      meta: { timestamp: new Date().toISOString(), cached: false },
     });
   } catch (err: any) {
     return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: err.message || 'Terrain fetch failed', timestamp: new Date().toISOString() },
+      {
+        success: false,
+        error: { code: 'TERRAIN_FETCH_FAILED', message: err.message || 'Terrain fetch failed' },
+        meta: { timestamp: new Date().toISOString(), cached: false },
+      },
       { status: 500 }
     );
   }

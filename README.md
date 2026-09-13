@@ -1,363 +1,149 @@
 # 🚆 RailGaadi — Indian Railway Intelligence Platform
 
 <p align="center">
-  <strong>Real-time train tracking • Route intelligence • Delay analytics • Weather context</strong>
-</p>
-
-<p align="center">
-  <a href="https://github.com/faizanalam-1457/RailGaadi-Train-Booking-System.git">Original Repository</a>
+  <strong>Real-Time Train Telemetry • Route Vector Mapping • Station Split-Flap Display • Delay Analytics • Weather Context</strong>
 </p>
 
 ---
 
-## 📌 Overview
+## 📌 Product Vision
 
-**RailGaadi** is a modern Indian railway intelligence web application designed to help users search trains and explore train-related information through a clean, interactive interface.
+**RailGaadi** is a production-grade Indian Railway Intelligence Platform engineered with a focus on speed, clarity, WCAG 2.2 AA accessibility, data integrity, and resilience under network failures.
 
-The project is built with **Next.js 14, React 18, TypeScript and Tailwind CSS**, with supporting libraries for animations, maps, state management and data utilities.
-
-The current repository structure includes the Next.js App Router, API routes for search/train/analytics/terrain/weather, train-detail routes, favorites and share routes, and reusable components/features.
-
-> **Note:** The screenshots below are representative UI preview mockups created for documentation. Replace them with real screenshots from your running application before presenting the project as production evidence.
+The application communicates one clear message: **"Everything you need to understand your train journey, in one place."**
 
 ---
 
 ## ✨ Key Features
 
-- 🔎 **Train search** by train number or train name
-- ⚡ **Instant client-side search** using the bundled train database
-- 🚆 **Train detail pages** with dynamic train-number routes
-- 📍 **Route and location visualization**
-- 🗺️ **Interactive map support** using MapLibre GL
-- 📊 **Train analytics and delay insights**
-- 🌦️ **Weather intelligence**
-- ⭐ **Favorite trains**
-- 🔗 **Shareable train pages**
-- ⌨️ **Keyboard-friendly search** with `⌘ K` / `Ctrl + K`
-- 🎞️ **Smooth UI animations** using Framer Motion
-- 🌓 **Responsive modern interface**
-
-The homepage implementation includes debounced search, recent searches, dynamic train routing and a search dropdown. The repository's API structure includes search, train, analytics, terrain and weather endpoints.
+- 🔎 **Instant Combobox Search**: Search by train number (`12951`, `22436`) or name (`Rajdhani`, `Shatabdi`) with `⌘ K` keyboard shortcuts, ARIA combobox accessibility, and offline static DB fallback.
+- 🚆 **Live Telemetry & Station Timelines**: Scheduled vs actual arrival/departure timestamps, platform numbers, and status indicators (On Time, Delayed, Cancelled).
+- 🗺️ **Vector Map Tracking**: MapLibre GL dark vector maps with animated train marker telemetry, route line glow, station popups, and follow-camera controls.
+- 📊 **Topographical & Delay Analytics**: Elevation profile charts across Indian geographical corridors (Western Ghats, Gangetic Plains, Aravallis) and station-by-station delay histories.
+- 🌦️ **Contextual Weather Intelligence**: Weather telemetry for current position and upcoming station stops.
+- 🎫 **Digital PNR Boarding Pass**: Interactive PNR wallet with real-time boarding countdown timer and IRCTC barcode verification simulator.
+- 🍱 **Seat Meal & Coach Layout Simulators**: Interactive coach position layouts and seat meal ordering simulators.
+- ⚡ **Redis & Sliding Window Rate-Limiting**: Upstash Redis caching with in-memory fallbacks and distributed API rate-limiting (`429 Too Many Requests`).
+- 🛡️ **Strict Real Data Policy**: Explicit isolation of live data vs simulation/demo modes — no hidden fake tracking.
 
 ---
 
-## 🖥️ Screenshots
+## 🏗️ Architecture & Data Flow
 
-### 🏠 Home & Train Search
+```
+                               ┌────────────────────────────────┐
+                               │     Browser Client (Next.js)   │
+                               └───────────────┬────────────────┘
+                                               │
+                                               ▼
+                              ┌──────────────────────────────────┐
+                              │    Next.js API Routes (/api/*)   │
+                              └────────────────┬─────────────────┘
+                                               │
+                       ┌───────────────────────┼────────────────────────┐
+                       ▼                       ▼                        ▼
+           ┌──────────────────────┐ ┌─────────────────────┐  ┌─────────────────────┐
+           │ Upstash Redis / Cache│ │ Rate Limiter (429)  │  │ Real Data Validator │
+           └──────────────────────┘ └─────────────────────┘  └──────────┬──────────┘
+                                                                        │
+                                                                        ▼
+                                                             ┌─────────────────────┐
+                                                             │ RailRadar / Weather │
+                                                             │   OpenTopography    │
+                                                             └─────────────────────┘
+```
 
-![RailGaadi Home Search](screenshots/01-home-search.png)
+---
 
-### 🚆 Train Details
+## 🛡️ Real Data Policy & Security
 
-![RailGaadi Train Details](screenshots/02-train-details.png)
-
-### 🗺️ Live Route Map
-
-![RailGaadi Live Route Map](screenshots/03-live-route-map.png)
-
-### 📊 Analytics & Weather
-
-![RailGaadi Analytics](screenshots/04-analytics-weather.png)
+1. **Private API Key Isolation**: All external private API keys (`RAILRADAR_API_KEY`, `OPENWEATHER_API_KEY`, `OPENTOPOGRAPHY_API_KEY`, `UPSTASH_REDIS_REST_*`) remain strictly server-side inside API routes (`/api/*`). The browser client only consumes public vector tile keys.
+2. **Transparent Data Transparency**: Live tracking displays verified railway data. Fallback/simulation data is strictly isolated behind `isDemoData: true` and explicitly labeled in the UI.
 
 ---
 
 ## 🧰 Tech Stack
 
-| Technology | Purpose |
+| Domain | Technologies |
 |---|---|
-| **Next.js 14** | Full-stack React framework and App Router |
-| **React 18** | UI development |
-| **TypeScript** | Type-safe development |
-| **Tailwind CSS** | Responsive styling |
-| **Framer Motion** | UI animations |
-| **Lucide React** | Interface icons |
-| **MapLibre GL** | Interactive maps |
-| **TanStack React Query** | Data/query management |
-| **Zustand** | Client-side state management |
-| **Turf.js** | Geospatial utilities |
+| **Core Framework** | Next.js 14 (App Router), React 18, TypeScript 5 |
+| **Styling & UI** | Vanilla Tailwind CSS, Class Variance Authority (CVA), Lucide Icons |
+| **State & Cache** | TanStack React Query 5, Zustand 4, Upstash Redis REST |
+| **Geospatial & Vector Maps** | MapLibre GL JS, Turf.js, OpenTopography, Overpass API |
+| **Animation** | Framer Motion 11 |
+| **Testing** | Vitest |
 
 ---
 
-## 🏗️ Project Structure
+## ⚙️ Environment Variables Setup
 
-```text
-RailGaadi/
-├── app/
-│   ├── api/
-│   │   ├── analytics/
-│   │   ├── search/
-│   │   ├── terrain/
-│   │   ├── train/
-│   │   └── weather/
-│   ├── favorites/
-│   ├── share/
-│   ├── train/
-│   │   └── [id]/
-│   ├── layout.tsx
-│   └── page.tsx
-│
-├── components/
-├── config/
-├── features/
-├── hooks/
-├── lib/
-├── providers/
-├── public/
-├── store/
-├── styles/
-├── types/
-├── utils/
-│
-├── .env.example
-├── next.config.mjs
-├── package.json
-├── postcss.config.mjs
-├── tailwind.config.ts
-└── tsconfig.json
+Create a `.env.local` file in the repository root:
+
+```env
+# RailRadar Live Railway Intelligence API Key
+RAILRADAR_API_KEY=your_railradar_api_key
+
+# Public MapTiler Key for Dark Vector Tiles
+NEXT_PUBLIC_MAPTILER_API_KEY=your_maptiler_api_key
+
+# OpenWeather API Key (Server-Side Only)
+OPENWEATHER_API_KEY=your_openweather_api_key
+
+# OpenTopography Key (Server-Side Only)
+OPENTOPOGRAPHY_API_KEY=your_opentopography_api_key
+
+# Upstash Redis REST Credentials (Server-Side Only)
+UPSTASH_REDIS_REST_URL=https://your-redis-instance.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_token
+
+# Optional: Enable Demo Simulation Mode Fallback in Development
+ALLOW_DEMO_DATA=false
 ```
 
 ---
 
-## 🔍 How Train Search Works
+## 🚀 Local Development Setup
 
-The application uses a local train database for the search experience.
+1. **Clone Repository & Install Dependencies**:
+   ```bash
+   git clone https://github.com/faizanalam-1457/RailGaadi-Train-Tracking-System.git
+   cd RailGaadi-Train-Booking-System
+   npm install
+   ```
 
-The search hook maps matching train records into a normalized result containing:
+2. **Run TypeScript Type Check & Unit Tests**:
+   ```bash
+   ./node_modules/.bin/tsc --noEmit
+   npm test
+   ```
 
-- Train number
-- Train name
-- Origin station
-- Destination station
+3. **Start Next.js Development Server**:
+   ```bash
+   npm run dev
+   ```
+   Open `http://localhost:3000` in your browser.
 
-This enables fast client-side results without requiring a network request for every search.
-
-Example:
-
-```text
-User enters:
-12951
-
-        ↓
-
-Local train database search
-
-        ↓
-
-Matching train
-
-        ↓
-
-Train number + name + origin + destination
-
-        ↓
-
-Dynamic train details page
-```
+4. **Production Build & Launch**:
+   ```bash
+   npm run build
+   npm run start
+   ```
 
 ---
 
-## 🚀 Getting Started
+## 🧪 Testing
 
-### 1. Clone the repository
-
+Run unit tests via Vitest:
 ```bash
-git clone https://github.com/faizanalam-1457/RailGaadi-Train-Booking-System.git
-cd RailGaadi-Train-Booking-System
+npm test
 ```
-
-### 2. Install dependencies
-
-```bash
-npm install
-```
-
-### 3. Configure environment variables
-
-Create a `.env.local` file if the application requires environment-specific configuration.
-
-Use the provided example:
-
-```bash
-cp .env.example .env.local
-```
-
-Then configure the required values.
-
-### 4. Run the development server
-
-```bash
-npm run dev
-```
-
-Open:
-
-```text
-http://localhost:3000
-```
-
-### 5. Create a production build
-
-```bash
-npm run build
-```
-
-### 6. Start the production server
-
-```bash
-npm start
-```
+The test suite validates:
+- Train number and name search queries (`TRAINS_DB`).
+- Delay formatting utilities (`formatDelay`).
+- RailRadar service real data policy compliance (`generateFallbackJourney`).
 
 ---
-
-## 📡 Application Routes
-
-The repository currently contains application/API routes for:
-
-```text
-/
-├── /train/[id]
-├── /favorites
-├── /share/[id]
-│
-└── /api
-    ├── /analytics/[id]
-    ├── /search
-    ├── /terrain
-    ├── /train/[id]
-    └── /weather
-```
-
----
-
-## 🎯 Project Highlights for Recruiters
-
-### Frontend Engineering
-- Next.js App Router
-- React component architecture
-- TypeScript
-- Responsive Tailwind UI
-- Framer Motion animations
-
-### Data & State
-- Client-side train search
-- Zustand state management
-- TanStack React Query
-- Structured train data types
-
-### Geospatial Features
-- MapLibre GL
-- Route visualization
-- Turf.js geospatial utilities
-- Terrain/location-related API routes
-
-### Product Thinking
-- Recent searches
-- Favorites
-- Shareable train pages
-- Keyboard shortcuts
-- Loading and error states
-
----
-
-## 🧪 Development Commands
-
-```bash
-# Development
-npm run dev
-
-# Production build
-npm run build
-
-# Production server
-npm start
-
-# Lint
-npm run lint
-```
-
----
-
-## 📦 Deployment
-
-The project is structured as a Next.js application and can be deployed on platforms that support Next.js.
-
-Recommended deployment workflow:
-
-```text
-GitHub
-   ↓
-Connect repository
-   ↓
-Install dependencies
-   ↓
-npm run build
-   ↓
-Deploy
-```
-
-For environment-dependent features, configure the required variables in the deployment platform.
-
----
-
-## 🔐 Environment Variables
-
-Do not commit private API keys or secrets.
-
-Use:
-
-```text
-.env.local
-```
-
-and keep secrets outside Git history.
-
-The repository provides:
-
-```text
-.env.example
-```
-
-as a configuration reference.
-
----
-
-## 📚 Learning Outcomes
-
-This project demonstrates practical experience with:
-
-- Modern React development
-- Next.js App Router
-- TypeScript
-- API route organization
-- Client-side search
-- State management
-- Data fetching patterns
-- Geospatial visualization
-- Interactive maps
-- Responsive UI development
-- Production build and deployment workflows
-
----
-
-## 👨‍💻 Author
-
-**Faizan Alam**
-
-Computer Science / AI & ML / Full-Stack Developer
-
-GitHub:  
-https://github.com/faizanalam-1457
-
----
-
-
 
 ## 📄 License
 
-Check the original repository for the applicable licensing information before redistributing or presenting modified versions.
-
----
-
-<p align="center">
-  🚆 <strong>RailGaadi</strong> — Explore India's railway network with a modern intelligence-first experience.
-</p>
+MIT License. Designed and engineered for Indian Railway Intelligence.

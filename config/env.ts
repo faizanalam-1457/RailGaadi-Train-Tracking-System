@@ -12,12 +12,17 @@ export const env = {
   // OpenTopography — server-side only
   OPENTOPOGRAPHY_API_KEY: process.env.OPENTOPOGRAPHY_API_KEY || '',
 
-  // Upstash Redis (Phase 2)
+  // Upstash Redis
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL || '',
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || '',
+
+  // The Guardian Content API — server-side only
+  GUARDIAN_API_KEY: process.env.GUARDIAN_API_KEY || '',
+  GUARDIAN_BASE_URL: 'https://content.guardianapis.com',
 };
 
 // Client-safe config — only include NEXT_PUBLIC_ variables here
 export const clientEnv = {
   MAPTILER_API_KEY: process.env.NEXT_PUBLIC_MAPTILER_API_KEY || '',
 };
+
