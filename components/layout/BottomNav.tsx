@@ -3,15 +3,15 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Compass, Newspaper, Heart, Info } from 'lucide-react';
+import { Home, Compass, Cpu, Newspaper, Heart } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { useFavoritesStore } from '@/store/favorites';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/live-radar', label: 'Radar', icon: Compass },
+  { href: '/general-intelligence', label: 'General AI', icon: Cpu },
   { href: '/intelligence', label: 'News', icon: Newspaper },
-  { href: '/about', label: 'About', icon: Info },
   { href: '/favorites', label: 'Saved', icon: Heart },
 ];
 
@@ -27,15 +27,18 @@ export function BottomNav() {
             const isActive =
               href === '/' ? pathname === '/' : pathname.startsWith(href);
             const isFavoritesTab = href === '/favorites';
+            const isAi = href === '/general-intelligence';
 
             return (
               <Link
                 key={href}
                 href={href}
                 className={cn(
-                  'relative flex flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 transition-all duration-200',
+                  'relative flex flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 transition-all duration-200',
                   isActive
-                    ? 'text-rail-blue'
+                    ? 'text-rail-blue font-bold'
+                    : isAi
+                    ? 'text-emerald-500 hover:text-emerald-400'
                     : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 )}
               >
@@ -59,4 +62,3 @@ export function BottomNav() {
     </nav>
   );
 }
-

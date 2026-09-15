@@ -2,12 +2,13 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Train, Search, Heart, Compass, MapPin, Calculator, Utensils, Newspaper, Info } from 'lucide-react';
+import { Train, Search, Heart, Compass, MapPin, Calculator, Utensils, Newspaper, Info, Cpu } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/utils/cn';
 import { useFavoritesStore } from '@/store/favorites';
 import { SignalLight } from '@/components/animation/SignalLight';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { MobilePreviewSimulator } from '@/components/ui/MobilePreviewSimulator';
 
 export function Navbar() {
   const pathname = usePathname();
@@ -16,6 +17,7 @@ export function Navbar() {
   const links = [
     { href: '/', label: 'Search', icon: Search, exact: true },
     { href: '/live-radar', label: 'Live Radar', icon: Compass, exact: false },
+    { href: '/general-intelligence', label: 'General AI', icon: Cpu, exact: false },
     { href: '/stations', label: 'Stations', icon: MapPin, exact: false },
     { href: '/intelligence', label: 'Intelligence', icon: Newspaper, exact: false },
     { href: '/schedules', label: 'Comparer', icon: Calculator, exact: false },
@@ -28,7 +30,7 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full px-4 pt-4 pb-2">
       <div className="glass-panel mx-auto flex max-w-7xl items-center justify-between rounded-2xl px-4 sm:px-6 py-3 shadow-glass">
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-2.5 group">
+        <Link href="/" className="flex items-center gap-2.5 group shrink-0">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rail-blue text-white shadow-glow transition-transform group-hover:scale-105">
             <Train className="h-5 w-5" />
           </div>
@@ -42,12 +44,13 @@ export function Navbar() {
           </div>
         </Link>
 
-        {/* Navigation Links & Theme Toggle */}
-        <div className="flex items-center gap-2">
+        {/* Navigation Links & Actions */}
+        <div className="flex items-center gap-2 overflow-hidden">
           <nav className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar">
             {links.map(({ href, label, icon: Icon, exact }) => {
               const isActive = exact ? pathname === href : pathname.startsWith(href);
               const isFav = href === '/favorites';
+              const isAi = href === '/general-intelligence';
 
               return (
                 <Link
@@ -57,10 +60,12 @@ export function Navbar() {
                     'relative flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all whitespace-nowrap',
                     isActive
                       ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                      : isAi
+                      ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
                   )}
                 >
-                  <Icon className="h-3.5 w-3.5" />
+                  <Icon className={cn('h-3.5 w-3.5', isAi && !isActive && 'text-emerald-500 animate-pulse')} />
                   <span className="hidden lg:inline">{label}</span>
                   {isFav && favorites.length > 0 && (
                     <span className="flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
@@ -72,10 +77,12 @@ export function Navbar() {
             })}
           </nav>
 
-          <ThemeToggle />
+          <div className="flex items-center gap-1.5 border-l border-slate-200/80 dark:border-slate-800/80 pl-2">
+            <MobilePreviewSimulator />
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </header>
   );
 }
-
